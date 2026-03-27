@@ -11,7 +11,6 @@ async function logToSheets(pregunta, respuesta, url) {
     const now = new Date();
     const fecha = now.toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
     const hora = now.toLocaleTimeString('es-CO', { timeZone: 'America/Bogota' });
-
     await fetch(SHEETS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -48,8 +47,12 @@ export default async function handler(req, res) {
     try { body = JSON.parse(body); } catch(e) {}
   }
 
+  // Extraer pageUrl y eliminarlo antes de enviar a Anthropic
   const pageUrl = body.pageUrl || '';
-  const messages = body.messages || [];
+  const { pageUrl: _, ...anthropicBody } = body;
+
+  // Obtener última pregunta del usuario para el log
+  const messages = anthropicBody.messages || [];
   const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
   const pregunta = lastUserMsg ? lastUserMsg.content : '';
 
@@ -61,7 +64,7 @@ export default async function handler(req, res) {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(anthropicBody)
     });
 
     const text = await response.text();
@@ -70,6 +73,7 @@ export default async function handler(req, res) {
 
     const respuesta = data.content && data.content[0] ? data.content[0].text : '';
 
+    // Guardar en Sheets de forma asíncrona sin bloquear la respuesta
     if (pregunta && respuesta) {
       logToSheets(pregunta, respuesta, pageUrl);
     }
