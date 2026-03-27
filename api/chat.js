@@ -4,6 +4,24 @@ export const config = {
   }
 };
 
+const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbwWMSOLPYmoHBlckXiB8I58maqBqoWgcwDLIkwDOtFtr-qYDsLv2IMApEchVj9z5fmn/exec';
+
+async function logToSheets(pregunta, respuesta, url) {
+  try {
+    const now = new Date();
+    const fecha = now.toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+    const hora = now.toLocaleTimeString('es-CO', { timeZone: 'America/Bogota' });
+
+    await fetch(SHEETS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fecha, hora, pregunta, respuesta, url: url || '' })
+    });
+  } catch (err) {
+    console.error('Sheets log error:', err.message);
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -30,6 +48,11 @@ export default async function handler(req, res) {
     try { body = JSON.parse(body); } catch(e) {}
   }
 
+  const pageUrl = body.pageUrl || '';
+  const messages = body.messages || [];
+  const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+  const pregunta = lastUserMsg ? lastUserMsg.content : '';
+
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -44,6 +67,12 @@ export default async function handler(req, res) {
     const text = await response.text();
     let data;
     try { data = JSON.parse(text); } catch(e) { data = { raw: text }; }
+
+    const respuesta = data.content && data.content[0] ? data.content[0].text : '';
+
+    if (pregunta && respuesta) {
+      logToSheets(pregunta, respuesta, pageUrl);
+    }
 
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.status(response.status).json(data);
